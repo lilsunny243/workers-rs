@@ -1,4 +1,4 @@
-use crate::durable::ObjectNamespace;
+use crate::{durable::ObjectNamespace, Bucket};
 use crate::error::Error;
 use crate::Result;
 
@@ -46,6 +46,11 @@ impl Env {
     pub fn durable_object(&self, binding: &str) -> Result<ObjectNamespace> {
         self.get_binding(binding)
     }
+
+    /// Access an R2 Bucket by the binding name configured in your wrangler.toml file.
+    pub fn bucket(&self, binding: &str) -> Result<Bucket> {
+        self.get_binding(binding)
+    }
 }
 
 pub trait EnvBinding: Sized + JsCast {
@@ -56,7 +61,7 @@ pub trait EnvBinding: Sized + JsCast {
         if obj.constructor().name() == Self::TYPE_NAME {
             Ok(obj.unchecked_into())
         } else {
-            Err(format!("Binding cannot be cast to the type {}", Self::TYPE_NAME).into())
+            Err(format!("Binding cannot be cast to the type {} from {}", Self::TYPE_NAME, obj.constructor().name()).into())
         }
     }
 }

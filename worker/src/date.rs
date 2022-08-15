@@ -88,3 +88,9 @@ impl From<Date> for JsDate {
         val.js_date
     }
 }
+
+impl From<JsDate> for Date {
+    fn from(js_date: JsDate) -> Self {
+        Self { js_date }
+    }
+}

@@ -1,7 +1,9 @@
+use std::{collections::HashMap, convert::TryInto};
+
 pub use builder::*;
 
 use futures_util::{stream::BoxStream, Stream, TryStreamExt};
-use js_sys::{JsString, Uint8Array};
+use js_sys::{JsString, Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use worker_sys::r2::{
@@ -9,7 +11,7 @@ use worker_sys::r2::{
     R2Objects as EdgeR2Objects,
 };
 
-use crate::{ByteStream, Error, Result};
+use crate::{env::EnvBinding, ByteStream, Date, Error, Result, Headers};
 
 mod builder;
 
@@ -86,6 +88,36 @@ impl Bucket {
     }
 }
 
+impl EnvBinding for Bucket {
+    const TYPE_NAME: &'static str = "R2Bucket";
+}
+
+impl JsCast for Bucket {
+    fn instanceof(val: &JsValue) -> bool {
+        val.is_instance_of::<EdgeR2Bucket>()
+    }
+
+    fn unchecked_from_js(val: JsValue) -> Self {
+        Self { inner: val.into() }
+    }
+
+    fn unchecked_from_js_ref(val: &JsValue) -> &Self {
+        unsafe { &*(val as *const JsValue as *const Self) }
+    }
+}
+
+impl From<Bucket> for JsValue {
+    fn from(bucket: Bucket) -> Self {
+        JsValue::from(bucket.inner)
+    }
+}
+
+impl AsRef<JsValue> for Bucket {
+    fn as_ref(&self) -> &JsValue {
+        &self.inner
+    }
+}
+
 /// [Object] is created when you [put](Bucket::put) an object into a [Bucket]. [Object] represents
 /// the metadata of an object based on the information provided by the uploader. Every object that
 /// you [put](Bucket::put) into a [Bucket] will have an [Object] created.
@@ -94,11 +126,104 @@ pub struct Object {
 }
 
 impl Object {
+    pub fn key(&self) -> String {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.key(),
+            ObjectInner::Body(inner) => inner.key(),
+        }
+    }
+
+    pub fn version(&self) -> String {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.version(),
+            ObjectInner::Body(inner) => inner.version(),
+        }
+    }
+
+    pub fn size(&self) -> u32 {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.size(),
+            ObjectInner::Body(inner) => inner.size(),
+        }
+    }
+
+    pub fn etag(&self) -> String {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.etag(),
+            ObjectInner::Body(inner) => inner.etag(),
+        }
+    }
+
+    pub fn http_etag(&self) -> String {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.http_etag(),
+            ObjectInner::Body(inner) => inner.http_etag(),
+        }
+    }
+
+    pub fn uploaded(&self) -> Date {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.uploaded(),
+            ObjectInner::Body(inner) => inner.uploaded(),
+        }
+        .into()
+    }
+
+    pub fn http_metadata(&self) -> HttpMetadata {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.http_metadata(),
+            ObjectInner::Body(inner) => inner.http_metadata(),
+        }
+        .into()
+    }
+
+    pub fn custom_metadata(&self) -> Result<HashMap<String, String>> {
+        let metadata = match &self.inner {
+            ObjectInner::NoBody(inner) => inner.custom_metadata(),
+            ObjectInner::Body(inner) => inner.custom_metadata(),
+        };
+
+        let keys = js_sys::Object::keys(&metadata).to_vec();
+        let mut map = HashMap::with_capacity(keys.len());
+
+        for key in keys {
+            let key = key.unchecked_into::<JsString>();
+            let value = Reflect::get(&metadata, &key)?.dyn_into::<JsString>()?;
+            map.insert(key.into(), value.into());
+        }
+
+        Ok(map)
+    }
+
+    pub fn range(&self) -> Result<Range> {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.range(),
+            ObjectInner::Body(inner) => inner.range(),
+        }
+        .try_into()
+    }
+
     pub fn body(&self) -> Option<ObjectBody> {
         match &self.inner {
             ObjectInner::NoBody(_) => None,
             ObjectInner::Body(body) => Some(ObjectBody { inner: body }),
         }
+    }
+
+    pub fn body_used(&self) -> Option<bool> {
+        match &self.inner {
+            ObjectInner::NoBody(_) => None,
+            ObjectInner::Body(inner) => Some(inner.body_used()),
+        }
+    }
+
+    pub fn write_http_metadata(&self, headers: Headers) -> Result<()> {
+        match &self.inner {
+            ObjectInner::NoBody(inner) => inner.write_http_metadata(headers.0)?,
+            ObjectInner::Body(inner) => inner.write_http_metadata(headers.0)?,
+        };
+
+        Ok(())
     }
 }
 
