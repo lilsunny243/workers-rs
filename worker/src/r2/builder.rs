@@ -1,23 +1,22 @@
 use std::collections::HashMap;
 
-use js_sys::JsString;
-use serde::Serialize;
+use js_sys::{Array, JsString, Map, Uint8Array};
 use serde_bytes::ByteBuf;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use worker_sys::r2::{R2Bucket as EdgeR2Bucket, R2Object as EdgeR2Object};
+use worker_sys::r2::{
+    R2Bucket as EdgeR2Bucket, R2Conditional as R2ConditionalSys, R2GetOptions as R2GetOptionsSys,
+    R2HttpMetadata as R2HttpMetadataSys, R2ListOptions as R2ListOptionsSys,
+    R2Object as EdgeR2Object, R2PutOptions as R2PutOptionsSys, R2Range as R2RangeSys,
+};
 
-use crate::{Date, Error, ObjectInner, Objects, Result};
+use crate::{Date, ObjectInner, Objects, Result};
 
 use super::{Object, R2Data};
 
 /// Options for configuring the [get](crate::r2::Bucket::get) operation.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct GetOptionsBuilder<'bucket> {
-    #[serde(skip)]
     pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
-    #[serde(skip)]
     pub(crate) key: String,
     pub(crate) only_if: Option<R2Conditional>,
     pub(crate) range: Option<R2Range>,
@@ -40,10 +39,15 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
 
     /// Executes the GET operation on the R2 bucket.
     pub async fn execute(self) -> Result<Option<Object>> {
-        let options = serde_wasm_bindgen::to_value(&self).map_err(|e| Error::Internal(e.into()))?;
         let name: String = self.key;
+        let get_promise = self.edge_bucket.get(
+            name,
+            R2GetOptionsSys {
+                only_f: self.only_if.map(Into::into),
+                range: self.range.map(Into::into),
+            },
+        );
 
-        let get_promise = self.edge_bucket.get(name, options);
         let value = JsFuture::from(get_promise).await?;
 
         if value.is_null() {
@@ -61,35 +65,66 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// You can pass an [R2Conditional] object to [GetOptionsBuilder]. If the condition check fails,
+/// the body will not be returned. This will make [get](crate::r2::Bucket::get) have lower latency.
+/// 
+/// For more information about conditional requests, refer to [RFC 7232](https://datatracker.ietf.org/doc/html/rfc7232).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct R2Conditional {
-    pub(crate) etag_atches: Option<String>,
-    pub(crate) etag_does_not_match: Option<String>,
-    // TODO(zeb): implement serializer for date.
-    #[serde(skip)]
-    pub(crate) uploaded_before: Option<Date>,
-    // TODO(zeb): implement serializer for date.
-    #[serde(skip)]
-    pub(crate) uploaded_after: Option<Date>,
+    /// Performs the operation if the object’s etag matches the given string.
+    pub etag_matches: Option<String>,
+    /// Performs the operation if the object’s etag does not match the given string.
+    pub etag_does_not_match: Option<String>,
+    /// Performs the operation if the object was uploaded before the given date.
+    pub uploaded_before: Option<Date>,
+    /// Performs the operation if the object was uploaded after the given date.
+    pub uploaded_after: Option<Date>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
+impl From<R2Conditional> for R2ConditionalSys {
+    fn from(val: R2Conditional) -> Self {
+        R2ConditionalSys {
+            etag_matches: val.etag_matches,
+            etag_does_not_match: val.etag_does_not_match,
+            uploaded_before: val.uploaded_before.map(Into::into),
+            uploaded_after: val.uploaded_after.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum R2Range {
     OffsetWithOptionalLength { offset: i64, length: Option<i64> },
     OptionalOffsetWithLength { offset: Option<i64>, length: i64 },
     Suffix { suffix: i64 },
 }
 
+impl From<R2Range> for R2RangeSys {
+    fn from(val: R2Range) -> Self {
+        match val {
+            R2Range::OffsetWithOptionalLength { offset, length } => R2RangeSys {
+                offset: Some(offset),
+                length,
+                suffix: None,
+            },
+            R2Range::OptionalOffsetWithLength { offset, length } => R2RangeSys {
+                offset,
+                length: Some(length),
+                suffix: None,
+            },
+            R2Range::Suffix { suffix } => R2RangeSys {
+                offset: None,
+                length: None,
+                suffix: Some(suffix),
+            },
+        }
+    }
+}
+
 /// Options for configuring the [put](crate::r2::Bucket::put) operation.
-#[derive(Serialize)]
 pub struct PutOptionsBuilder<'bucket> {
-    #[serde(skip)]
     pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
-    #[serde(skip)]
     pub(crate) key: String,
-    #[serde(skip)]
     pub(crate) value: R2Data,
     pub(crate) http_metadata: Option<HttpMetadata>,
     pub(crate) custom_metadata: Option<HashMap<String, String>>,
@@ -117,11 +152,31 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
 
     /// Executes the PUT operation on the R2 bucket.
     pub async fn execute(self) -> Result<Object> {
-        let options = serde_wasm_bindgen::to_value(&self).map_err(|e| Error::Internal(e.into()))?;
         let value: JsValue = self.value.into();
         let name: String = self.key;
 
-        let put_promise = self.edge_bucket.put(name, value, options);
+        let put_promise = self.edge_bucket.put(
+            name,
+            value,
+            R2PutOptionsSys {
+                http_metadata: self.http_metadata.map(Into::into),
+                custom_metadata: match self.custom_metadata {
+                    Some(metadata) => {
+                        let map = Map::new();
+                        for (k, v) in metadata.into_iter() {
+                            map.set(&JsString::from(k), &JsString::from(v));
+                        }
+                        map.into()
+                    }
+                    None => JsValue::undefined(),
+                },
+                md5: self.md5.map(|bytes| {
+                    let arr = Uint8Array::new_with_length(bytes.len() as _);
+                    arr.copy_from(&bytes);
+                    arr.buffer()
+                }),
+            },
+        );
         let res: EdgeR2Object = JsFuture::from(put_promise).await?.into();
         let inner = if JsString::from("bodyUsed").js_in(&res) {
             ObjectInner::Body(res.unchecked_into())
@@ -142,23 +197,31 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
 /// This data is echoed back on GET responses based on what was originally
 /// assigned to the object (and can typically also be overriden when issuing
 /// the GET request).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpMetadata {
     pub content_type: Option<String>,
     pub content_language: Option<String>,
     pub content_disposition: Option<String>,
     pub content_encoding: Option<String>,
     pub cache_control: Option<String>,
-    // TODO(zeb): implement serializer for date.
-    #[serde(skip)]
     pub cache_expiry: Option<Date>,
 }
 
+impl From<HttpMetadata> for R2HttpMetadataSys {
+    fn from(val: HttpMetadata) -> Self {
+        R2HttpMetadataSys {
+            content_type: val.content_type,
+            content_language: val.content_language,
+            content_disposition: val.content_disposition,
+            content_encoding: val.content_encoding,
+            cache_control: val.cache_control,
+            cache_expiry: val.cache_expiry.map(Into::into),
+        }
+    }
+}
+
 /// Options for configuring the [list](crate::r2::Bucket::list) operation.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ListOptionsBuilder<'bucket> {
-    #[serde(skip)]
     pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
     pub(crate) limit: Option<i64>,
     pub(crate) prefix: Option<String>,
@@ -216,15 +279,31 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
 
     /// Executes the LIST operation on the R2 bucket.
     pub async fn execute(self) -> Result<Objects> {
-        let options = serde_wasm_bindgen::to_value(&self).map_err(|e| Error::Internal(e.into()))?;
-        let list_promise = self.edge_bucket.list(options);
+        let list_promise = self.edge_bucket.list(R2ListOptionsSys {
+            limit: self.limit,
+            prefix: self.prefix,
+            cursor: self.cursor,
+            delimiter: self.delimiter,
+            include: self
+                .include
+                .map(|include| {
+                    let arr = Array::new_with_length(include.len() as _);
+                    for include in include {
+                        arr.push(&JsString::from(match include {
+                            Include::HttpMetadata => "httpMetadata",
+                            Include::CustomMetadata => "customMetadata",
+                        }));
+                    }
+                    arr.into()
+                })
+                .unwrap_or(JsValue::UNDEFINED),
+        });
         let inner = JsFuture::from(list_promise).await?.into();
         Ok(Objects { inner })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Include {
     HttpMetadata,
     CustomMetadata,
