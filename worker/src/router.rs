@@ -10,7 +10,7 @@ use crate::{
     http::Method,
     request::Request,
     response::Response,
-    Result, Bucket,
+    Bucket, Result,
 };
 
 type HandlerFn<D> = fn(Request, RouteContext<D>) -> Result<Response>;
@@ -95,7 +95,7 @@ impl<D> RouteContext<D> {
         self.params.get(key)
     }
 
-     /// Get a R2 Bucket associated with this Worker, should one exist.
+    /// Get a R2 Bucket associated with this Worker, should one exist.
     pub fn bucket(&self, binding: &str) -> Result<Bucket> {
         self.env.bucket(binding)
     }

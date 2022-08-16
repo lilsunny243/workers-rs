@@ -11,7 +11,7 @@ use worker_sys::r2::{
     R2Objects as EdgeR2Objects,
 };
 
-use crate::{env::EnvBinding, ByteStream, Date, Error, Result, Headers};
+use crate::{env::EnvBinding, ByteStream, Date, Error, Headers, Result};
 
 mod builder;
 

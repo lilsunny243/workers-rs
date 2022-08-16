@@ -1,6 +1,6 @@
-use crate::{durable::ObjectNamespace, Bucket};
 use crate::error::Error;
 use crate::Result;
+use crate::{durable::ObjectNamespace, Bucket};
 
 use js_sys::Object;
 use wasm_bindgen::{prelude::*, JsCast, JsValue};
@@ -61,7 +61,12 @@ pub trait EnvBinding: Sized + JsCast {
         if obj.constructor().name() == Self::TYPE_NAME {
             Ok(obj.unchecked_into())
         } else {
-            Err(format!("Binding cannot be cast to the type {} from {}", Self::TYPE_NAME, obj.constructor().name()).into())
+            Err(format!(
+                "Binding cannot be cast to the type {} from {}",
+                Self::TYPE_NAME,
+                obj.constructor().name()
+            )
+            .into())
         }
     }
 }

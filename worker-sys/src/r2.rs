@@ -15,12 +15,8 @@ extern "C" {
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = get)]
     pub fn get(this: &R2Bucket, key: String, options: JsValue) -> ::js_sys::Promise;
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = put)]
-    pub fn put(
-        this: &R2Bucket,
-        key: String,
-        value: JsValue,
-        options: JsValue,
-    ) -> ::js_sys::Promise;
+    pub fn put(this: &R2Bucket, key: String, value: JsValue, options: JsValue)
+        -> ::js_sys::Promise;
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = delete)]
     pub fn delete(this: &R2Bucket, key: String) -> ::js_sys::Promise;
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = list)]
