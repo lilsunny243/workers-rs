@@ -1,7 +1,6 @@
 use std::{collections::HashMap, convert::TryFrom};
 
 use js_sys::{Array, JsString, Uint8Array};
-use serde_bytes::ByteBuf;
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use worker_sys::r2::{
@@ -157,7 +156,7 @@ pub struct PutOptionsBuilder<'bucket> {
     pub(crate) value: R2Data,
     pub(crate) http_metadata: Option<HttpMetadata>,
     pub(crate) custom_metadata: Option<HashMap<String, String>>,
-    pub(crate) md5: Option<ByteBuf>,
+    pub(crate) md5: Option<Vec<u8>>,
 }
 
 impl<'bucket> PutOptionsBuilder<'bucket> {
@@ -175,7 +174,7 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
 
     /// A md5 hash to use to check the recieved object’s integrity.
     pub fn md5(mut self, bytes: impl Into<Vec<u8>>) -> Self {
-        self.md5 = Some(ByteBuf::from(bytes));
+        self.md5 = Some(bytes.into());
         todo!()
     }
 
