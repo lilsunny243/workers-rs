@@ -2,7 +2,7 @@ use std::{collections::HashMap, convert::TryInto};
 
 pub use builder::*;
 
-use futures_util::{stream::BoxStream, Stream, TryStreamExt};
+use futures_util::{stream::BoxStream, Stream, StreamExt, TryStreamExt};
 use js_sys::{JsString, Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -52,7 +52,7 @@ impl Bucket {
     ///
     /// R2 writes are strongly consistent. Once the future resolves, all subsequent read operations
     /// will see this key value pair globally.
-    pub fn put(&self, key: impl Into<String>, value: impl Into<R2Data>) -> PutOptionsBuilder {
+    pub fn put(&self, key: impl Into<String>, value: impl Into<Data>) -> PutOptionsBuilder {
         PutOptionsBuilder {
             edge_bucket: &self.inner,
             key: key.into(),
@@ -245,6 +245,22 @@ impl<'body> ObjectBody<'body> {
             inner: stream.into_stream(),
         })
     }
+
+    pub async fn bytes(self) -> Result<Vec<u8>> {
+        let mut bytes = Vec::with_capacity(self.inner.size() as usize);
+        let mut stream = self.stream()?;
+
+        while let Some(chunk) = stream.next().await {
+            let mut chunk = chunk?;
+            bytes.append(&mut chunk);
+        }
+
+        Ok(bytes)
+    }
+
+    pub async fn text(self) -> Result<String> {
+        String::from_utf8(self.bytes().await?).map_err(|e| Error::RustError(e.to_string()))
+    }
 }
 
 /// A series of [Object]s returned by [list](Bucket::list).
@@ -297,40 +313,40 @@ pub(crate) enum ObjectInner {
     Body(EdgeR2ObjectBody),
 }
 
-pub enum R2Data {
+pub enum Data {
     Stream(BoxStream<'static, Result<Vec<u8>>>),
     Text(String),
     Bytes(Vec<u8>),
-    None,
+    Empty,
 }
 
-impl R2Data {
+impl Data {
     pub fn from_stream<S>(stream: S) -> Self
     where
         S: Stream<Item = Result<Vec<u8>>>,
         S: Send + 'static,
     {
         let stream = Box::pin(stream);
-        R2Data::Stream(stream)
+        Data::Stream(stream)
     }
 }
 
-impl From<String> for R2Data {
+impl From<String> for Data {
     fn from(value: String) -> Self {
-        R2Data::Text(value)
+        Data::Text(value)
     }
 }
 
-impl From<Vec<u8>> for R2Data {
+impl From<Vec<u8>> for Data {
     fn from(value: Vec<u8>) -> Self {
-        R2Data::Bytes(value)
+        Data::Bytes(value)
     }
 }
 
-impl From<R2Data> for JsValue {
-    fn from(data: R2Data) -> Self {
+impl From<Data> for JsValue {
+    fn from(data: Data) -> Self {
         match data {
-            R2Data::Stream(stream) => {
+            Data::Stream(stream) => {
                 let js_stream = stream
                     .map_ok(|chunk| {
                         let array = Uint8Array::new_with_length(chunk.len() as _);
@@ -344,13 +360,13 @@ impl From<R2Data> for JsValue {
                 let stream = wasm_streams::ReadableStream::from_stream(js_stream);
                 stream.into_raw().into()
             }
-            R2Data::Text(text) => JsString::from(text).into(),
-            R2Data::Bytes(bytes) => {
+            Data::Text(text) => JsString::from(text).into(),
+            Data::Bytes(bytes) => {
                 let arr = Uint8Array::new_with_length(bytes.len() as u32);
                 arr.copy_from(&bytes);
                 arr.into()
             }
-            R2Data::None => JsValue::UNDEFINED,
+            Data::Empty => JsValue::NULL,
         }
     }
 }

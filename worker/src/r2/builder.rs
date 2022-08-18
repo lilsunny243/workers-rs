@@ -1,30 +1,29 @@
 use std::{collections::HashMap, convert::TryFrom};
 
-use js_sys::{Array, JsString, Uint8Array};
-use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
+use js_sys::{Array, Date as JsDate, JsString, Object as JsObject, Uint8Array};
+use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use worker_sys::r2::{
-    R2Bucket as EdgeR2Bucket, R2Conditional as R2ConditionalSys, R2GetOptions as R2GetOptionsSys,
-    R2HttpMetadata as R2HttpMetadataSys, R2ListOptions as R2ListOptionsSys,
-    R2Object as EdgeR2Object, R2PutOptions as R2PutOptionsSys, R2Range as R2RangeSys,
+    R2Bucket as EdgeR2Bucket, R2HttpMetadata as R2HttpMetadataSys, R2Object as EdgeR2Object,
+    R2Range as R2RangeSys,
 };
 
 use crate::{Date, Error, ObjectInner, Objects, Result};
 
-use super::{Object, R2Data};
+use super::{Data, Object};
 
 /// Options for configuring the [get](crate::r2::Bucket::get) operation.
 pub struct GetOptionsBuilder<'bucket> {
     pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
     pub(crate) key: String,
-    pub(crate) only_if: Option<R2Conditional>,
+    pub(crate) only_if: Option<Conditional>,
     pub(crate) range: Option<Range>,
 }
 
 impl<'bucket> GetOptionsBuilder<'bucket> {
     /// Specifies that the object should only be returned given satisfaction of certain conditions
     /// in the [R2Conditional]. Refer to [Conditional operations](https://developers.cloudflare.com/r2/runtime-apis/#conditional-operations).
-    pub fn only_if(mut self, only_if: R2Conditional) -> Self {
+    pub fn only_if(mut self, only_if: Conditional) -> Self {
         self.only_if = Some(only_if);
         self
     }
@@ -41,13 +40,10 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
         let name: String = self.key;
         let get_promise = self.edge_bucket.get(
             name,
-            firm(
-                R2GetOptionsSys {
-                    only_f: self.only_if.map(Into::into),
-                    range: self.range.map(Into::into),
-                }
-                .into(),
-            ),
+            js_object! {
+                "onlyIf" => self.only_if.map(JsObject::from),
+                "range" => self.range.map(JsObject::from),
+            },
         );
 
         let value = JsFuture::from(get_promise).await?;
@@ -67,12 +63,12 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
     }
 }
 
-/// You can pass an [R2Conditional] object to [GetOptionsBuilder]. If the condition check fails,
+/// You can pass an [Conditional] object to [GetOptionsBuilder]. If the condition check fails,
 /// the body will not be returned. This will make [get](crate::r2::Bucket::get) have lower latency.
 ///
 /// For more information about conditional requests, refer to [RFC 7232](https://datatracker.ietf.org/doc/html/rfc7232).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct R2Conditional {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Conditional {
     /// Performs the operation if the object’s etag matches the given string.
     pub etag_matches: Option<String>,
     /// Performs the operation if the object’s etag does not match the given string.
@@ -83,13 +79,13 @@ pub struct R2Conditional {
     pub uploaded_after: Option<Date>,
 }
 
-impl From<R2Conditional> for R2ConditionalSys {
-    fn from(val: R2Conditional) -> Self {
-        R2ConditionalSys {
-            etag_matches: val.etag_matches,
-            etag_does_not_match: val.etag_does_not_match,
-            uploaded_before: val.uploaded_before.map(Into::into),
-            uploaded_after: val.uploaded_after.map(Into::into),
+impl From<Conditional> for JsObject {
+    fn from(val: Conditional) -> Self {
+        js_object! {
+            "etagMatches" => JsValue::from(val.etag_matches),
+            "etagDoesNotMatch" => JsValue::from(val.etag_does_not_match),
+            "uploadedBefore" => JsValue::from(val.uploaded_before.map(JsDate::from)),
+            "uploadedAfter" => JsValue::from(val.uploaded_after.map(JsDate::from)),
         }
     }
 }
@@ -102,28 +98,28 @@ pub enum Range {
     Suffix { suffix: u32 },
 }
 
-impl From<Range> for R2RangeSys {
+impl From<Range> for JsObject {
     fn from(val: Range) -> Self {
         match val {
-            Range::OffsetWithLength { offset, length } => R2RangeSys {
-                offset: Some(offset),
-                length: Some(length),
-                suffix: None,
+            Range::OffsetWithLength { offset, length } => js_object! {
+                "offset" => Some(offset),
+                "length" => Some(length),
+                "suffix" => JsValue::UNDEFINED,
             },
-            Range::OffsetWithOptionalLength { offset, length } => R2RangeSys {
-                offset: Some(offset),
-                length,
-                suffix: None,
+            Range::OffsetWithOptionalLength { offset, length } => js_object! {
+                "offset" => Some(offset),
+                "length" => length,
+                "suffix" => JsValue::UNDEFINED,
             },
-            Range::OptionalOffsetWithLength { offset, length } => R2RangeSys {
-                offset,
-                length: Some(length),
-                suffix: None,
+            Range::OptionalOffsetWithLength { offset, length } => js_object! {
+                "offset" => offset,
+                "length" => Some(length),
+                "suffix" => JsValue::UNDEFINED,
             },
-            Range::Suffix { suffix } => R2RangeSys {
-                offset: None,
-                length: None,
-                suffix: Some(suffix),
+            Range::Suffix { suffix } => js_object! {
+                "offset" => JsValue::UNDEFINED,
+                "length" => JsValue::UNDEFINED,
+                "suffix" => Some(suffix),
             },
         }
     }
@@ -153,7 +149,7 @@ impl TryFrom<R2RangeSys> for Range {
 pub struct PutOptionsBuilder<'bucket> {
     pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
     pub(crate) key: String,
-    pub(crate) value: R2Data,
+    pub(crate) value: Data,
     pub(crate) http_metadata: Option<HttpMetadata>,
     pub(crate) custom_metadata: Option<HashMap<String, String>>,
     pub(crate) md5: Option<Vec<u8>>,
@@ -175,7 +171,7 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
     /// A md5 hash to use to check the recieved object’s integrity.
     pub fn md5(mut self, bytes: impl Into<Vec<u8>>) -> Self {
         self.md5 = Some(bytes.into());
-        todo!()
+        self
     }
 
     /// Executes the PUT operation on the R2 bucket.
@@ -186,27 +182,25 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
         let put_promise = self.edge_bucket.put(
             name,
             value,
-            firm(
-                R2PutOptionsSys {
-                    http_metadata: self.http_metadata.map(Into::into),
-                    custom_metadata: match self.custom_metadata {
-                        Some(metadata) => {
-                            let obj = js_sys::Object::new();
-                            for (k, v) in metadata.into_iter() {
-                                js_sys::Reflect::set(&obj, &JsString::from(k), &JsString::from(v))?;
-                            }
-                            obj.into()
+            js_object! {
+                "httpMetadata" => self.http_metadata.map(JsObject::from),
+                "customMetadata" => match self.custom_metadata {
+                    Some(metadata) => {
+                        let obj = JsObject::new();
+                        for (k, v) in metadata.into_iter() {
+                            js_sys::Reflect::set(&obj, &JsString::from(k), &JsString::from(v))?;
                         }
-                        None => JsValue::undefined(),
-                    },
-                    md5: self.md5.map(|bytes| {
-                        let arr = Uint8Array::new_with_length(bytes.len() as _);
-                        arr.copy_from(&bytes);
-                        arr.buffer()
-                    }),
-                }
-                .into(),
-            ),
+                        obj.into()
+                    }
+                    None => JsValue::UNDEFINED,
+                },
+                "md5" => self.md5.map(|bytes| {
+                    let arr = Uint8Array::new_with_length(bytes.len() as _);
+                    arr.copy_from(&bytes);
+                    arr.buffer()
+                })
+            }
+            .into(),
         );
         let res: EdgeR2Object = JsFuture::from(put_promise).await?.into();
         let inner = if JsString::from("bodyUsed").js_in(&res) {
@@ -238,15 +232,15 @@ pub struct HttpMetadata {
     pub cache_expiry: Option<Date>,
 }
 
-impl From<HttpMetadata> for R2HttpMetadataSys {
+impl From<HttpMetadata> for JsObject {
     fn from(val: HttpMetadata) -> Self {
-        Self {
-            content_type: val.content_type,
-            content_language: val.content_language,
-            content_disposition: val.content_disposition,
-            content_encoding: val.content_encoding,
-            cache_control: val.cache_control,
-            cache_expiry: val.cache_expiry.map(Into::into),
+        js_object! {
+            "contentType" => val.content_type,
+            "contentLanguage" => val.content_language,
+            "contentDisposition" => val.content_disposition,
+            "contentEncoding" => val.content_encoding,
+            "cacheControl" => val.cache_control,
+            "cacheExpiry" => val.cache_expiry.map(JsDate::from),
         }
     }
 }
@@ -254,12 +248,12 @@ impl From<HttpMetadata> for R2HttpMetadataSys {
 impl From<R2HttpMetadataSys> for HttpMetadata {
     fn from(val: R2HttpMetadataSys) -> Self {
         Self {
-            content_type: val.content_type,
-            content_language: val.content_language,
-            content_disposition: val.content_disposition,
-            content_encoding: val.content_encoding,
-            cache_control: val.cache_control,
-            cache_expiry: val.cache_expiry.map(Into::into),
+            content_type: val.content_type(),
+            content_language: val.content_language(),
+            content_disposition: val.content_disposition(),
+            content_encoding: val.content_encoding(),
+            cache_control: val.cache_control(),
+            cache_expiry: val.cache_expiry().map(Into::into),
         }
     }
 }
@@ -282,21 +276,21 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
     }
 
     /// The prefix to match keys against. Keys will only be returned if they start with given prefix.
-    pub fn prefix(mut self, prefix: String) -> Self {
-        self.prefix = Some(prefix);
+    pub fn prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.prefix = Some(prefix.into());
         self
     }
 
     /// An opaque token that indicates where to continue listing objects from. A cursor can be
     /// retrieved from a previous list operation.
-    pub fn cursor(mut self, cursor: String) -> Self {
-        self.cursor = Some(cursor);
+    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.cursor = Some(cursor.into());
         self
     }
 
     /// The character to use when grouping keys.
-    pub fn delimiter(mut self, delimiter: String) -> Self {
-        self.delimiter = Some(delimiter);
+    pub fn delimiter(mut self, delimiter: impl Into<String>) -> Self {
+        self.delimiter = Some(delimiter.into());
         self
     }
 
@@ -323,16 +317,16 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
 
     /// Executes the LIST operation on the R2 bucket.
     pub async fn execute(self) -> Result<Objects> {
-        let list_promise = self.edge_bucket.list(firm(
-            R2ListOptionsSys {
-                limit: self.limit,
-                prefix: self.prefix,
-                cursor: self.cursor,
-                delimiter: self.delimiter,
-                include: self
+        let list_promise = self.edge_bucket.list(
+            js_object! {
+                "limit" => self.limit,
+                "prefix" => self.prefix,
+                "cursor" => self.cursor,
+                "delimiter" => self.delimiter,
+                "include" => self
                     .include
                     .map(|include| {
-                        let arr = Array::new_with_length(include.len() as _);
+                        let arr = Array::new();
                         for include in include {
                             arr.push(&JsString::from(match include {
                                 Include::HttpMetadata => "httpMetadata",
@@ -344,7 +338,7 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
                     .unwrap_or(JsValue::UNDEFINED),
             }
             .into(),
-        ));
+        );
         let inner = JsFuture::from(list_promise).await?.into();
         Ok(Objects { inner })
     }
@@ -356,39 +350,16 @@ pub enum Include {
     CustomMetadata,
 }
 
-/// This is a really dirty hack but currently wasm-bindgen doesn't have the ability to turn a
-/// struct into an object, only into a class with getters. Miniflare only supports objects for
-/// R2 options while the Cloudflare Workers runtime doesn't care. So in the sake of maintaining
-/// compatibility for Miniflare we'll stick with this until https://github.com/rustwasm/wasm-bindgen/issues/2645
-#[wasm_bindgen(inline_js = r#"
-export function firm(obj) {
-    const firmValue = {};
-    const prototype = Object.getPrototypeOf(obj);
-
-    if (!prototype) {
-        return obj;
-    }
-
-    const descriptors = Object.getOwnPropertyDescriptors(
-        prototype
-    );
-
-    for (const key in descriptors) {
-        const descriptor = descriptors[key];
-
-        if (descriptor.get) {
-            const value = obj[key];
-            if (value && typeof value === 'object') {
-                firmValue[key] = firm(value);
-            } else {
-                firmValue[key] = value;
+macro_rules! js_object {
+    {$($key: expr => $value: expr),* $(,)?} => {{
+        let obj = JsObject::new();
+        $(
+            {
+                let res = ::js_sys::Reflect::set(&obj, &JsString::from($key), &JsValue::from($value));
+                debug_assert!(res.is_ok(), "setting properties should never fail on our dictionary objects");
             }
-        }
-    }
-
-    return firmValue;
+        )*
+        obj
+    }};
 }
-"#)]
-extern "C" {
-    fn firm(value: JsValue) -> JsValue;
-}
+pub(crate) use js_object;

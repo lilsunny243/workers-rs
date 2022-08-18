@@ -11,9 +11,15 @@ use wasm_bindgen::JsValue;
 /// let t1: Date = DateInit::Millis(1630611511000).into();
 /// let t2: Date = DateInit::String("Thu, 02 Sep 2021 19:38:31 GMT".to_string()).into();
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Date {
     js_date: JsDate,
+}
+
+impl PartialEq for Date {
+    fn eq(&self, other: &Self) -> bool {
+        self.js_date.as_f64() == other.js_date.as_f64()
+    }
 }
 
 /// Initialize a `Date` by constructing this enum.

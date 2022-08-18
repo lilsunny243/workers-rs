@@ -13,7 +13,7 @@ extern "C" {
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = head)]
     pub fn head(this: &R2Bucket, key: String) -> ::js_sys::Promise;
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = get)]
-    pub fn get(this: &R2Bucket, key: String, options: JsValue) -> ::js_sys::Promise;
+    pub fn get(this: &R2Bucket, key: String, options: ::js_sys::Object) -> ::js_sys::Promise;
     #[wasm_bindgen(structural, method, js_class=R2Bucket, js_name = put)]
     pub fn put(this: &R2Bucket, key: String, value: JsValue, options: JsValue)
         -> ::js_sys::Promise;
@@ -79,26 +79,6 @@ extern "C" {
     pub fn delimited_prefixes(this: &R2Objects) -> Vec<JsString>;
 }
 
-#[wasm_bindgen(getter_with_clone)]
-pub struct R2GetOptions {
-    #[wasm_bindgen(js_name = "onlyIf")]
-    pub only_f: Option<R2Conditional>,
-    pub range: Option<R2Range>,
-}
-
-#[wasm_bindgen(getter_with_clone)]
-#[derive(Debug, Clone)]
-pub struct R2Conditional {
-    #[wasm_bindgen(js_name = "etagMatches")]
-    pub etag_matches: Option<String>,
-    #[wasm_bindgen(js_name = "etagDoesNotMatch")]
-    pub etag_does_not_match: Option<String>,
-    #[wasm_bindgen(js_name = "uploadedBefore")]
-    pub uploaded_before: Option<::js_sys::Date>,
-    #[wasm_bindgen(js_name = "uploadedAfter")]
-    pub uploaded_after: Option<::js_sys::Date>,
-}
-
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
 pub struct R2Range {
@@ -107,37 +87,22 @@ pub struct R2Range {
     pub suffix: Option<u32>,
 }
 
-#[wasm_bindgen(getter_with_clone)]
-pub struct R2PutOptions {
-    #[wasm_bindgen(js_name = "httpMetadata")]
-    pub http_metadata: Option<R2HttpMetadata>,
-    #[wasm_bindgen(js_name = "customMetadata")]
-    pub custom_metadata: JsValue,
-    pub md5: Option<::js_sys::ArrayBuffer>,
-}
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends=::js_sys::Object, js_name=R2HttpMetadata)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub type R2HttpMetadata;
 
-#[wasm_bindgen(getter_with_clone)]
-#[derive(Debug, Clone)]
-pub struct R2HttpMetadata {
-    #[wasm_bindgen(js_name = "contentType")]
-    pub content_type: Option<String>,
-    #[wasm_bindgen(js_name = "contentLanguage")]
-    pub content_language: Option<String>,
-    #[wasm_bindgen(js_name = "contentDisposition")]
-    pub content_disposition: Option<String>,
-    #[wasm_bindgen(js_name = "contentEncoding")]
-    pub content_encoding: Option<String>,
-    #[wasm_bindgen(js_name = "cacheControl")]
-    pub cache_control: Option<String>,
-    #[wasm_bindgen(js_name = "cacheExpiry")]
-    pub cache_expiry: Option<::js_sys::Date>,
-}
-
-#[wasm_bindgen(getter_with_clone)]
-pub struct R2ListOptions {
-    pub limit: Option<u32>,
-    pub prefix: Option<String>,
-    pub cursor: Option<String>,
-    pub delimiter: Option<String>,
-    pub include: JsValue,
+    #[wasm_bindgen(structural, method, getter, js_class=R2HttpMetadata, js_name = contentType)]
+    pub fn content_type(this: &R2HttpMetadata) -> Option<String>;
+    #[wasm_bindgen(structural, method, getter, js_class=R2HttpMetadata, js_name = contentLanguage)]
+    pub fn content_language(this: &R2HttpMetadata) -> Option<String>;
+    #[wasm_bindgen(structural, method, getter, js_class=R2HttpMetadata, js_name = contentDisposition)]
+    pub fn content_disposition(this: &R2HttpMetadata) -> Option<String>;
+    #[wasm_bindgen(structural, method, getter, js_class=R2HttpMetadata, js_name = contentEncoding)]
+    pub fn content_encoding(this: &R2HttpMetadata) -> Option<String>;
+    #[wasm_bindgen(structural, method, getter, js_class=R2HttpMetadata, js_name = cacheControl)]
+    pub fn cache_control(this: &R2HttpMetadata) -> Option<String>;
+    #[wasm_bindgen(structural, method, getter, js_class=R2HttpMetadata, js_name = cacheExpiry)]
+    pub fn cache_expiry(this: &R2HttpMetadata) -> Option<::js_sys::Date>;
 }
