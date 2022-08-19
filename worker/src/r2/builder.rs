@@ -43,7 +43,8 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
             js_object! {
                 "onlyIf" => self.only_if.map(JsObject::from),
                 "range" => self.range.map(JsObject::from),
-            }.into(),
+            }
+            .into(),
         );
 
         let value = JsFuture::from(get_promise).await?;
