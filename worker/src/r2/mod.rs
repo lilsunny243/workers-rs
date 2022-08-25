@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::TryInto, pin::Pin};
 
 pub use builder::*;
 
@@ -314,7 +314,7 @@ pub(crate) enum ObjectInner {
 }
 
 pub enum Data {
-    Stream(BoxStream<'static, Result<Vec<u8>>>),
+    Stream(Pin<Box<dyn Stream<Item = Result<Vec<u8>>> + 'static>>),
     Text(String),
     Bytes(Vec<u8>),
     Empty,
@@ -324,7 +324,7 @@ impl Data {
     pub fn from_stream<S>(stream: S) -> Self
     where
         S: Stream<Item = Result<Vec<u8>>>,
-        S: Send + 'static,
+        S: 'static,
     {
         let stream = Box::pin(stream);
         Data::Stream(stream)
