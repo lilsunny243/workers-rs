@@ -1,12 +1,9 @@
-use worker_sys::cf::Cf as FfiCf;
-use worker_sys::cf::TlsClientAuth as FfiTlsClientAuth;
-
 /// In addition to the methods on the `Request` struct, the `Cf` struct on an inbound Request contains information about the request provided by Cloudflare’s edge.
 ///
 /// [Details](https://developers.cloudflare.com/workers/runtime-apis/request#incomingrequestcfproperties)
 #[derive(Debug)]
 pub struct Cf {
-    inner: FfiCf,
+    inner: worker_sys::IncomingRequestCfProperties,
 }
 
 impl Cf {
@@ -140,6 +137,16 @@ impl Cf {
         let tz = self.inner.timezone();
         tz.parse::<chrono_tz::Tz>().unwrap()
     }
+
+    /// Timezone name of the incoming request
+    pub fn timezone_name(&self) -> String {
+        self.inner.timezone()
+    }
+
+    /// Whether the country of the incoming request is in the EU
+    pub fn is_eu_country(&self) -> bool {
+        self.inner.is_eu_country() == Some("1".to_string())
+    }
 }
 
 /// Browser-requested prioritization information.
@@ -158,8 +165,8 @@ pub struct RequestPriority {
     pub group_weight: usize,
 }
 
-impl From<FfiCf> for Cf {
-    fn from(inner: FfiCf) -> Self {
+impl From<worker_sys::IncomingRequestCfProperties> for Cf {
+    fn from(inner: worker_sys::IncomingRequestCfProperties) -> Self {
         Self { inner }
     }
 }
@@ -167,7 +174,7 @@ impl From<FfiCf> for Cf {
 /// Only set when using Cloudflare Access or API Shield
 #[derive(Debug)]
 pub struct TlsClientAuth {
-    inner: FfiTlsClientAuth,
+    inner: worker_sys::TlsClientAuth,
 }
 
 impl TlsClientAuth {
@@ -215,13 +222,13 @@ impl TlsClientAuth {
         self.inner.cert_presented()
     }
 
-    pub fn cert_subject_dn_rfc225(&self) -> String {
-        self.inner.cert_subject_dn_rfc225()
+    pub fn cert_subject_dn_rfc2253(&self) -> String {
+        self.inner.cert_subject_dn_rfc2253()
     }
 }
 
-impl From<FfiTlsClientAuth> for TlsClientAuth {
-    fn from(inner: FfiTlsClientAuth) -> Self {
+impl From<worker_sys::TlsClientAuth> for TlsClientAuth {
+    fn from(inner: worker_sys::TlsClientAuth) -> Self {
         Self { inner }
     }
 }

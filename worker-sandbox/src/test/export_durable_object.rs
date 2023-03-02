@@ -43,26 +43,28 @@ impl DurableObject for MyClass {
 
                     ensure!(
                         keys == vec!["anything", "array", "map"],
-                        format!("Didn't list all of the keys: {:?}", keys)
+                        format!("Didn't list all of the keys: {keys:?}")
                     );
                     let vals = storage
                         .get_multiple(keys)
                         .await
                         .map_err(|e| e.to_string() + " -- get_multiple")?;
                     ensure!(
-                        vals.get(&"anything".into()).into_serde::<Option<i32>>()? == Some(45),
+                        serde_wasm_bindgen::from_value::<Option<i32>>(
+                            vals.get(&"anything".into())
+                        )? == Some(45),
                         "Didn't get the right Option<i32> using get_multiple"
                     );
                     ensure!(
-                        vals.get(&"array".into())
-                            .into_serde::<[(String, i32); 2]>()?
-                            == [("one".to_string(), 1), ("two".to_string(), 2)],
+                        serde_wasm_bindgen::from_value::<[(String, i32); 2]>(
+                            vals.get(&"array".into())
+                        )? == [("one".to_string(), 1), ("two".to_string(), 2)],
                         "Didn't get the right array using get_multiple"
                     );
                     ensure!(
-                        vals.get(&"map".into())
-                            .into_serde::<HashMap<String, i32>>()?
-                            == map,
+                        serde_wasm_bindgen::from_value::<HashMap<String, i32>>(
+                            vals.get(&"map".into())
+                        )? == map,
                         "Didn't get the right HashMap<String, i32> using get_multiple"
                     );
 

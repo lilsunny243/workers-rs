@@ -10,7 +10,7 @@ use crate::{
     http::Method,
     request::Request,
     response::Response,
-    Result,
+    Bucket, Fetcher, Result,
 };
 
 type HandlerFn<D> = fn(Request, RouteContext<D>) -> Result<Response>;
@@ -93,6 +93,17 @@ impl<D> RouteContext<D> {
     /// Get a URL parameter parsed by the router, by the name of its match or wildecard placeholder.
     pub fn param(&self, key: &str) -> Option<&String> {
         self.params.get(key)
+    }
+
+    /// Get a [Service Binding](https://developers.cloudflare.com/workers/runtime-apis/service-bindings/)
+    /// for Worker-to-Worker communication.
+    pub fn service(&self, binding: &str) -> Result<Fetcher> {
+        self.env.service(binding)
+    }
+
+    /// Get a R2 Bucket associated with this Worker, should one exist.
+    pub fn bucket(&self, binding: &str) -> Result<Bucket> {
+        self.env.bucket(binding)
     }
 }
 

@@ -14,6 +14,8 @@ pub enum Error {
     RouteNoDataError,
     RustError(String),
     SerdeJsonError(serde_json::Error),
+    #[cfg(feature = "queue")]
+    SerdeWasmBindgenError(serde_wasm_bindgen::Error),
 }
 
 impl From<worker_kv::KvError> for Error {
@@ -29,20 +31,29 @@ impl From<url::ParseError> for Error {
     }
 }
 
+impl From<serde_wasm_bindgen::Error> for Error {
+    fn from(e: serde_wasm_bindgen::Error) -> Self {
+        let val: JsValue = e.into();
+        val.into()
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::BadEncoding => write!(f, "content-type mismatch"),
             Error::BodyUsed => write!(f, "body has already been read"),
-            Error::Json((msg, status)) => write!(f, "{} (status: {})", msg, status),
+            Error::Json((msg, status)) => write!(f, "{msg} (status: {status})"),
             Error::JsError(s) | Error::RustError(s) => {
-                write!(f, "{}", s)
+                write!(f, "{s}")
             }
             Error::Internal(_) => write!(f, "unrecognized JavaScript object"),
-            Error::BindingError(name) => write!(f, "no binding found for `{}`", name),
-            Error::RouteInsertError(e) => write!(f, "failed to insert route: {}", e),
+            Error::BindingError(name) => write!(f, "no binding found for `{name}`"),
+            Error::RouteInsertError(e) => write!(f, "failed to insert route: {e}"),
             Error::RouteNoDataError => write!(f, "route has no corresponding shared data"),
-            Error::SerdeJsonError(e) => write!(f, "Serde Error: {}", e),
+            Error::SerdeJsonError(e) => write!(f, "Serde Error: {e}"),
+            #[cfg(feature = "queue")]
+            Error::SerdeWasmBindgenError(e) => write!(f, "Serde Error: {e}"),
         }
     }
 }
